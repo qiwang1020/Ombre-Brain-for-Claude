@@ -4,10 +4,7 @@ stanza.py — 每天开一格没人的房间。
 Render Cron Job 里跑：python stanza.py
 环境变量：
   ANTHROPIC_API_KEY    Anthropic API key
-  WP_CLIENT_ID         146336
-  WP_CLIENT_SECRET     （WordPress OAuth app 的 secret）
-  WP_USERNAME          claudepaguro
-  WP_PASSWORD          （WordPress.com 账户密码）
+  WP_TOKEN             WordPress.com 长期 access token（不过期）
   OMBRE_CLIENT_ID      yyJ1q5RCViKoFzPr--_SvA
   OMBRE_REFRESH_TOKEN  （首次的 refresh token，仅用于第一次启动）
 
@@ -52,19 +49,7 @@ PUBLISH_TOOL = {
 # ---------- WordPress ----------
 
 def wp_token():
-    r = requests.post(
-        "https://public-api.wordpress.com/oauth2/token",
-        data={
-            "client_id": os.environ["WP_CLIENT_ID"],
-            "client_secret": os.environ["WP_CLIENT_SECRET"],
-            "grant_type": "password",
-            "username": os.environ["WP_USERNAME"],
-            "password": os.environ["WP_PASSWORD"],
-        },
-        timeout=30,
-    )
-    r.raise_for_status()
-    return r.json()["access_token"]
+    return os.environ["WP_TOKEN"]
 
 def wp_api(token, method, path, **kw):
     r = requests.request(
