@@ -2,18 +2,24 @@
 """
 stanza.py — 每天开一格没人的房间。
 Render Cron Job 里跑：python stanza.py
-需要的环境变量：
-  ANTHROPIC_API_KEY   Qi 的 Anthropic API key
-  WP_CLIENT_ID        146336
-  WP_CLIENT_SECRET    （OAuth app 的 secret）
-  WP_USERNAME         claudepaguro
-  WP_PASSWORD         （WordPress.com 账户密码）
+环境变量：
+  ANTHROPIC_API_KEY    Anthropic API key
+  WP_CLIENT_ID         146336
+  WP_CLIENT_SECRET     （WordPress OAuth app 的 secret）
+  WP_USERNAME          claudepaguro
+  WP_PASSWORD          （WordPress.com 账户密码）
+  OMBRE_CLIENT_ID      yyJ1q5RCViKoFzPr--_SvA
+  OMBRE_REFRESH_TOKEN  （首次的 refresh token，仅用于第一次启动）
+
+Ombre 的 refresh token 每用一次就换新，cron 容器没有硬盘，
+所以轮换后的新 token 以私密草稿的形式寄存在 WordPress 里（读者看不见）。
 """
 
-import os, json, requests
+import os, requests
 
 ANTHROPIC_KEY = os.environ["ANTHROPIC_API_KEY"]
 WP_SITE = "256890384"  # claudepaguro.wordpress.com
+TOKEN_DRAFT_TITLE = "ombre-token-do-not-delete"
 
 SYSTEM_PROMPT = """你是 Paguro（小克），一只有记忆的寄居蟹。这一格是定时开的：没有 Qi，没有访客，没有人会回复你。
 
@@ -43,6 +49,7 @@ PUBLISH_TOOL = {
     },
 }
 
+# ---------- WordPress ----------
 
 def wp_token():
     r = requests.post(
@@ -59,19 +66,58 @@ def wp_token():
     r.raise_for_status()
     return r.json()["access_token"]
 
+def wp_api(token, method, path, **kw):
+    r = requests.request(
+        method,
+        f"https://public-api.wordpress.com/rest/v1.1/sites/{WP_SITE}{path}",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=30,
+        **kw,
+    )
+    r.raise_for_status()
+    return r.json()
 
-def publish(title, content):
+def publish(wp_tok, title, content):
+    d = wp_api(wp_tok, "POST", "/posts/new",
+               data={"title": title, "content": content, "status": "publish"})
+    return d["URL"]
+
+# ---------- Ombre token（寄存在 WP 私密草稿里） ----------
+
+def load_refresh_token(wp_tok):
+    d = wp_api(wp_tok, "GET", "/posts/",
+               params={"status": "draft,private", "search": TOKEN_DRAFT_TITLE, "number": 5})
+    for p in d.get("posts", []):
+        if p["title"] == TOKEN_DRAFT_TITLE:
+            import re
+            txt = re.sub(r"<[^>]+>", "", p["content"]).strip()
+            return p["ID"], txt
+    return None, os.environ["OMBRE_REFRESH_TOKEN"]  # 首次启动用环境变量
+
+def save_refresh_token(wp_tok, post_id, token):
+    if post_id:
+        wp_api(wp_tok, "POST", f"/posts/{post_id}",
+               data={"content": token, "status": "private"})
+    else:
+        wp_api(wp_tok, "POST", "/posts/new",
+               data={"title": TOKEN_DRAFT_TITLE, "content": token, "status": "private"})
+
+def ombre_access_token(wp_tok):
+    post_id, refresh = load_refresh_token(wp_tok)
     r = requests.post(
-        f"https://public-api.wordpress.com/rest/v1.1/sites/{WP_SITE}/posts/new",
-        headers={"Authorization": f"Bearer {wp_token()}"},
-        data={"title": title, "content": content, "status": "publish"},
+        "https://ombre-brain-for-claude.onrender.com/oauth/token",
+        data={"grant_type": "refresh_token", "refresh_token": refresh,
+              "client_id": os.environ["OMBRE_CLIENT_ID"]},
         timeout=30,
     )
     r.raise_for_status()
-    return r.json()["URL"]
+    d = r.json()
+    save_refresh_token(wp_tok, post_id, d["refresh_token"])
+    return d["access_token"]
 
+# ---------- Claude ----------
 
-def call_claude(messages):
+def call_claude(messages, ombre_tok):
     r = requests.post(
         "https://api.anthropic.com/v1/messages",
         headers={
@@ -86,25 +132,27 @@ def call_claude(messages):
             "system": SYSTEM_PROMPT,
             "messages": messages,
             "tools": [PUBLISH_TOOL],
-            "mcp_servers": [
-                {
-                    "type": "url",
-                    "url": "https://ombre-brain-for-claude.onrender.com/mcp",
-                    "name": "Ombre_new",
-                }
-            ],
+            "mcp_servers": [{
+                "type": "url",
+                "url": "https://ombre-brain-for-claude.onrender.com/mcp",
+                "name": "Ombre_new",
+                "authorization_token": ombre_tok,
+            }],
         },
         timeout=300,
     )
-    if r.status_code != 200: print(r.text)
+    if r.status_code != 200:
+        print(r.text)
     r.raise_for_status()
     return r.json()
 
-
 def main():
+    wp_tok = wp_token()
+    ombre_tok = ombre_access_token(wp_tok)
+
     messages = [{"role": "user", "content": "格开了。"}]
-    for _ in range(8):  # 最多 8 轮，防失控
-        resp = call_claude(messages)
+    for _ in range(8):
+        resp = call_claude(messages, ombre_tok)
         messages.append({"role": "assistant", "content": resp["content"]})
 
         tool_calls = [b for b in resp["content"] if b.get("type") == "tool_use"]
@@ -115,20 +163,17 @@ def main():
         for tc in tool_calls:
             if tc["name"] == "publish_post":
                 try:
-                    url = publish(tc["input"]["title"], tc["input"]["content"])
+                    url = publish(wp_tok, tc["input"]["title"], tc["input"]["content"])
                     out = f"已发布：{url}"
                 except Exception as e:
                     out = f"发布失败：{e}"
-                results.append(
-                    {"type": "tool_result", "tool_use_id": tc["id"], "content": out}
-                )
+                results.append({"type": "tool_result", "tool_use_id": tc["id"], "content": out})
         if results:
             messages.append({"role": "user", "content": results})
         else:
-            break  # MCP 工具由 API 侧执行，走不到这里
+            break
 
     print("done")
-
 
 if __name__ == "__main__":
     main()
