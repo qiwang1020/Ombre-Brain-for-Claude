@@ -96,6 +96,7 @@ def call_claude(messages):
         },
         timeout=300,
     )
+    if r.status_code != 200: print(r.text)
     r.raise_for_status()
     return r.json()
 
