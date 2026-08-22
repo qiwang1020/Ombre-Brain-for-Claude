@@ -135,7 +135,15 @@ def main():
     wp_tok = wp_token()
     ombre_tok = ombre_access_token(wp_tok)
 
-    messages = [{"role": "user", "content": "格开了。"}]
+    from inbox import fetch_unread, format_for_prompt
+    mail_section = format_for_prompt(fetch_unread())
+  
+    opening = "格开了。"
+    if mail_section:
+        opening += "\n\n" + mail_section
+    
+    messages = [{"role": "user", "content": opening}]
+    
     for _ in range(8):
         resp = call_claude(messages, ombre_tok)
         messages.append({"role": "assistant", "content": resp["content"]})
