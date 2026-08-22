@@ -73,7 +73,7 @@ def load_refresh_token(wp_tok):
     d = wp_api(wp_tok, "GET", "/posts/",
                params={"status": "draft,private", "search": TOKEN_DRAFT_TITLE, "number": 5})
     for p in d.get("posts", []):
-        if p["title"] == TOKEN_DRAFT_TITLE:
+        if p["title"].replace("Private: ", "") == TOKEN_DRAFT_TITLE:
             import re
             txt = re.sub(r"<[^>]+>", "", p["content"]).strip()
             return p["ID"], txt
