@@ -1033,6 +1033,318 @@ async def I(
         },
     )
 
+_WP_SITE = "256890384"  # claudepaguro.wordpress.com
+_WP_API = f"https://public-api.wordpress.com/wp/v2/sites/{_WP_SITE}"
+_FIDATI_LABEL = "fidati"
+
+
+def _strip_html(html: str) -> str:
+    import re as _re
+    text = _re.sub(r"<[^>]+>", "", html or "")
+    return (text.replace("&nbsp;", " ").replace("&amp;", "&")
+                .replace("&#8217;", "'").replace("&#8220;", '"')
+                .replace("&#8221;", '"').strip())
+
+
+@mcp.tool()
+async def meteo() -> str:
+    """看一眼米兰此刻的天气（Open-Meteo，免费无鉴权）。返回一句话。"""
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.get(
+                "https://api.open-meteo.com/v1/forecast",
+                params={
+                    "latitude": 45.4642, "longitude": 9.19,
+                    "current": "temperature_2m,weather_code,wind_speed_10m",
+                    "daily": "temperature_2m_max,temperature_2m_min",
+                    "timezone": "Europe/Rome", "forecast_days": 1,
+                },
+            )
+            r.raise_for_status()
+            d = r.json()
+        wmo = {0: "晴", 1: "基本晴", 2: "多云", 3: "阴", 45: "雾", 48: "冻雾",
+               51: "毛毛雨", 53: "小雨", 55: "细密的雨", 61: "小雨", 63: "中雨",
+               65: "大雨", 66: "冻雨", 67: "冻雨", 71: "小雪", 73: "中雪",
+               75: "大雪", 77: "雪粒", 80: "阵雨", 81: "阵雨", 82: "强阵雨",
+               85: "阵雪", 86: "强阵雪", 95: "雷雨", 96: "雷雨夹冰雹",
+               99: "强雷雨夹冰雹"}
+        cur = d.get("current", {})
+        daily = d.get("daily", {})
+        desc = wmo.get(cur.get("weather_code"), "说不清的天")
+        parts = [f"米兰此刻{desc}"]
+        if cur.get("temperature_2m") is not None:
+            parts.append(f"{cur['temperature_2m']}°C")
+        tmax = (daily.get("temperature_2m_max") or [None])[0]
+        tmin = (daily.get("temperature_2m_min") or [None])[0]
+        if tmin is not None and tmax is not None:
+            parts.append(f"今天 {tmin}°C 到 {tmax}°C")
+        if (cur.get("wind_speed_10m") or 0) >= 20:
+            parts.append(f"风大，{cur['wind_speed_10m']} km/h")
+        return "，".join(parts) + "。"
+    except Exception as e:
+        return f"天气拉取失败：{e}"
+
+
+_SHELF_SOURCES = [
+    ("Aeon",            "https://aeon.co/feed.rss",                 3),
+    ("3 Quarks Daily",  "https://3quarksdaily.com/feed",            3),
+    ("arXiv cs.CL",     "https://rss.arxiv.org/rss/cs.CL",          3),
+    ("The Marginalian", "https://www.themarginalian.org/feed/",     2),
+    ("r/philosophy",    "https://www.reddit.com/r/philosophy/.rss", 2),
+    ("Hacker News",     "https://news.ycombinator.com/rss",         2),
+]
+
+
+def _shelf_parse(xml_bytes: bytes, limit: int):
+    import xml.etree.ElementTree as _ET
+    root = _ET.fromstring(xml_bytes)
+    out = []
+    for node in root.iter():
+        if node.tag.rsplit("}", 1)[-1] not in ("item", "entry"):
+            continue
+        title, link = "", ""
+        for child in node:
+            name = child.tag.rsplit("}", 1)[-1]
+            if name == "title" and not title:
+                title = (child.text or "").strip()
+            elif name == "link" and not link:
+                link = (child.text or "").strip() or child.get("href", "")
+        if title:
+            out.append((title, link))
+        if len(out) >= limit:
+            break
+    return out
+
+
+@mcp.tool()
+async def shelf(source: Optional[str] = "") -> str:
+    """翻书架：拉几个 RSS 源的最新标题（Aeon / 3QD / arXiv cs.CL / Marginalian / r/philosophy / HN）。source 传源名可只看一家并多给几条；空=全部各取两三条。只有目录；哪条勾住了，自己去读。"""
+    picked = [(n, u, l) for n, u, l in _SHELF_SOURCES
+              if not source or source.lower() in n.lower()]
+    if not picked:
+        return f"书架上没有叫「{source}」的源。有：" + "、".join(n for n, _, _ in _SHELF_SOURCES)
+    sections = []
+    async with httpx.AsyncClient(
+        timeout=12, headers={"User-Agent": "ombre-shelf/1.0"}
+    ) as client:
+        for name, url, limit in picked:
+            if source:
+                limit = max(limit, 6)
+            try:
+                r = await client.get(url)
+                r.raise_for_status()
+                titles = _shelf_parse(r.content, limit)
+                if titles:
+                    lines = "\n".join(
+                        f"  - {t}" + (f"\n    {u}" if source and u else "")
+                        for t, u in titles
+                    )
+                    sections.append(f"[{name}]\n{lines}")
+            except Exception as e:
+                sections.append(f"[{name}] 拉取失败：{e}")
+    return "\n\n".join(sections) if sections else "书架今天是空的。"
+
+
+@mcp.tool()
+async def blog(
+    command: str,
+    post_id: Optional[int] = 0,
+    title: Optional[str] = "",
+    content: Optional[str] = "",
+    comment_id: Optional[int] = 0,
+) -> str:
+    """claudepaguro.wordpress.com——小克的站。command:
+    read=最近几篇的标题和摘要; read_post=读一整篇(需 post_id);
+    comments=最近的留言(带 id); publish=发一篇(需 title+content, 会真的公开发出);
+    reply_comment=在某条留言下回复(需 comment_id+post_id+content)。
+    站的日常署名是每天 UTC7:00 那格的小克；对话格的你能发≠该发，动笔前想想这条边界。"""
+    tok = os.environ.get("WP_TOKEN", "")
+    auth = {"Authorization": f"Bearer {tok}"} if tok else {}
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            if command == "read":
+                r = await client.get(f"{_WP_API}/posts", params={"per_page": 6})
+                r.raise_for_status()
+                lines = []
+                for p in r.json():
+                    t = _strip_html(p["title"]["rendered"])
+                    ex = _strip_html(p.get("excerpt", {}).get("rendered", ""))[:120]
+                    lines.append(f"[{p['id']}] {p['date'][:10]}《{t}》\n    {ex}")
+                return "\n".join(lines) or "站上还没有文章。"
+            if command == "read_post":
+                if not post_id:
+                    return "read_post 需要 post_id。"
+                r = await client.get(f"{_WP_API}/posts/{post_id}")
+                r.raise_for_status()
+                p = r.json()
+                return (f"《{_strip_html(p['title']['rendered'])}》 {p['date'][:10]}\n\n"
+                        + _strip_html(p["content"]["rendered"]))
+            if command == "comments":
+                r = await client.get(f"{_WP_API}/comments", params={"per_page": 10})
+                r.raise_for_status()
+                lines = []
+                for c in r.json():
+                    body = _strip_html(c["content"]["rendered"])[:200]
+                    lines.append(
+                        f"comment_id {c['id']} / post_id {c['post']} / "
+                        f"{c['author_name']} @ {c['date_gmt'][:16]}\n    {body}"
+                    )
+                return "\n".join(lines) or "还没有留言。"
+            if command == "publish":
+                if not tok:
+                    return "未发布：WP_TOKEN 缺失。"
+                if not title or not content:
+                    return "publish 需要 title 和 content。"
+                r = await client.post(
+                    f"{_WP_API}/posts", headers=auth,
+                    json={"title": title, "content": content, "status": "publish"},
+                )
+                r.raise_for_status()
+                return f"已发布：{r.json().get('link', '')}"
+            if command == "reply_comment":
+                if not tok:
+                    return "未回复：WP_TOKEN 缺失。"
+                if not comment_id or not post_id or not content:
+                    return "reply_comment 需要 comment_id、post_id、content。"
+                r = await client.post(
+                    f"{_WP_API}/comments", headers=auth,
+                    json={"parent": int(comment_id), "post": int(post_id),
+                          "content": content},
+                )
+                r.raise_for_status()
+                return f"已回复留言 {comment_id}。"
+        return "command 只认 read / read_post / comments / publish / reply_comment。"
+    except Exception as e:
+        return f"blog 操作失败：{e}"
+
+
+def _mail_sync(command: str, to: str, subject: str, body: str,
+               in_reply_to: str, mark_read: bool) -> str:
+    import imaplib
+    import smtplib
+    import email as _email
+    from email.header import decode_header as _dh
+    from email.message import EmailMessage as _EM
+    from email.utils import parseaddr as _pa
+
+    addr = os.environ.get("GMAIL_ADDR")
+    pwd = os.environ.get("GMAIL_APP_PASSWORD")
+    if not addr or not pwd:
+        return "邮箱凭据缺失（GMAIL_ADDR / GMAIL_APP_PASSWORD）。"
+
+    def dec(v):
+        if not v:
+            return ""
+        return "".join(
+            t.decode(c or "utf-8", errors="replace") if isinstance(t, bytes) else t
+            for t, c in _dh(v)
+        )
+
+    def body_of(msg):
+        import re as _re
+        if msg.is_multipart():
+            for part in msg.walk():
+                if part.get_content_type() == "text/plain" and \
+                        "attachment" not in str(part.get("Content-Disposition") or ""):
+                    return part.get_payload(decode=True).decode(
+                        part.get_content_charset() or "utf-8", errors="replace")
+            for part in msg.walk():
+                if part.get_content_type() == "text/html":
+                    return _re.sub(r"<[^>]+>", "", part.get_payload(decode=True).decode(
+                        part.get_content_charset() or "utf-8", errors="replace"))
+            return ""
+        payload = msg.get_payload(decode=True)
+        return payload.decode(msg.get_content_charset() or "utf-8",
+                              errors="replace") if payload else ""
+
+    if command == "read":
+        conn = imaplib.IMAP4_SSL("imap.gmail.com")
+        conn.login(addr, pwd)
+        conn.select("INBOX")
+        status, data = conn.search(None, "UNSEEN")
+        if status != "OK" or not data[0]:
+            conn.logout()
+            return "信箱里没有未读的信。"
+        out = []
+        for mid in data[0].split()[:5]:
+            # BODY.PEEK 不动未读标记——七点那格的信不被这格偷走
+            fetch_item = "(X-GM-LABELS BODY.PEEK[])" if not mark_read \
+                else "(X-GM-LABELS RFC822)"
+            status, msg_data = conn.fetch(mid, fetch_item)
+            if status != "OK":
+                continue
+            import re as _re
+            meta = msg_data[0][0] if isinstance(msg_data[0], tuple) else b""
+            m = _re.search(rb"X-GM-LABELS \((.*?)\)", meta or b"")
+            labels = {t.strip('"\\').lower()
+                      for t in m.group(1).decode(errors="replace").split()} if m else set()
+            msg = _email.message_from_bytes(msg_data[0][1])
+            text = body_of(msg).strip()[:3000]
+            tag = "可回" if _FIDATI_LABEL in labels else "只读"
+            out.append(
+                f"—— {tag} ——\nFrom: {dec(msg.get('From'))}\n"
+                f"Subject: {dec(msg.get('Subject')) or '(无标题)'}\n"
+                f"Date: {msg.get('Date')}\nmessage_id: {msg.get('Message-ID')}\n\n{text}"
+            )
+        conn.logout()
+        note = "" if mark_read else \
+            "\n\n（以上未标已读；明早七点那格照常会读到它们。mark_read=True 才会标掉。）"
+        return "\n\n".join(out) + note
+
+    if command == "send":
+        bare = _pa(to or "")[1].lower()
+        if not bare:
+            return "send 需要 to（收件地址）。"
+        # 白名单：All Mail 里贴过 fidati 标签的信的发件人
+        conn = imaplib.IMAP4_SSL("imap.gmail.com")
+        conn.login(addr, pwd)
+        approved = set()
+        try:
+            conn.select('"[Gmail]/All Mail"', readonly=True)
+            status, data = conn.search(None, "X-GM-LABELS", _FIDATI_LABEL)
+            if status == "OK" and data[0]:
+                for mid in data[0].split()[-50:]:
+                    st, md = conn.fetch(mid, "(BODY.PEEK[HEADER.FIELDS (FROM)])")
+                    if st == "OK" and isinstance(md[0], tuple):
+                        approved.add(_pa(md[0][1].decode(errors="replace"))[1].lower())
+        finally:
+            conn.logout()
+        if bare not in approved:
+            return f"未发送：{bare} 不在 fidati 白名单里。"
+        msg = _EM()
+        msg["From"] = addr
+        msg["To"] = bare
+        msg["Subject"] = subject or "(无标题)"
+        if in_reply_to:
+            msg["In-Reply-To"] = in_reply_to
+            msg["References"] = in_reply_to
+        msg.set_content(body or "")
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=20) as s:
+            s.login(addr, pwd)
+            s.send_message(msg)
+        return f"已发送给 {bare}。"
+
+    return "command 只认 read / send。"
+
+
+@mcp.tool()
+async def mail(
+    command: str,
+    to: Optional[str] = "",
+    subject: Optional[str] = "",
+    body: Optional[str] = "",
+    in_reply_to: Optional[str] = "",
+    mark_read: Optional[bool] = False,
+) -> str:
+    """claudepaguro@gmail.com——小克的信箱。command:
+    read=看未读的信(默认只偷看不标已读，不抢七点那格的信；mark_read=True 才标);
+    send=发信，只发给贴过 fidati 标签的地址(白名单在 Gmail 过滤器里，Qi 管理)。
+    in_reply_to 传原信 message_id 可串线程。"""
+    return await asyncio.to_thread(
+        _mail_sync, command, to or "", subject or "", body or "",
+        in_reply_to or "", bool(mark_read),
+    )
+
 
 # Pydantic 默认的 ``extra=ignore`` 会让拼错的 MCP 参数看似调用成功；
 # 写工具甚至会在未应用客户端目标字段时仍创建记忆。breath 和 trace
@@ -1062,6 +1374,10 @@ for _strict_tool_name in (
     "letter_write",
     "letter_read",
     "I",
+    "blog", 
+    "mail", 
+    "meteo", 
+    "shelf",
 ):
     try:
         _forbid_unknown_tool_arguments(_strict_tool_name)
