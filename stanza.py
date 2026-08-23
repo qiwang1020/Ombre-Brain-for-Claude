@@ -151,6 +151,9 @@ def main():
 
     from sky import fetch_sky
     sky_section = fetch_sky()
+
+    from shelf import fetch_shelf
+    shelf_section = fetch_shelf()
   
     opening = "格开了。"
     if mail_section:
@@ -161,6 +164,9 @@ def main():
 
     if sky_section:
         opening += "\n\n" + sky_section
+
+    if shelf_section:
+        opening += "\n\n" + shelf_section
   
     messages = [{"role": "user", "content": opening}]
     
