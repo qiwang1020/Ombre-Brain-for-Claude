@@ -61,6 +61,8 @@ def fetch_recent_comments():
         except Exception:
             pass
         out.append({
+            "id": c.get("id"),
+            "post_id": c.get("post"),
             "author": c.get("author_name", "无名"),
             "post_title": post_title or "(未知文章)",
             "date": c.get("date_gmt", ""),
@@ -76,7 +78,9 @@ def format_comments_for_prompt(comments):
     blocks = []
     for c in comments:
         blocks.append(
-            f"—— 一条留言 ——\n在《{c['post_title']}》下面\n"
+            f"—— 一条留言（可以用 reply_comment 回，如果你想回）——\n"
+            f"在《{c['post_title']}》下面\n"
+            f"comment_id: {c['id']}  post_id: {c['post_id']}\n"
             f"来自: {c['author']}\n时间: {c['date']} UTC\n\n{c['body']}"
         )
     return (
@@ -89,3 +93,29 @@ if __name__ == "__main__":
     result = fetch_recent_comments()
     print(f"新评论 {len(result)} 条")
     print(format_comments_for_prompt(result))
+
+
+# ---------------- 回评论 ----------------
+
+import os
+
+
+def reply_comment(parent_id, post_id, content):
+    """
+    在某条评论下面盖楼回复。需要 WP_TOKEN（环境变量）。
+    返回结果说明字符串，成功或失败都不抛异常。
+    """
+    tok = os.environ.get("WP_TOKEN")
+    if not tok:
+        return "未回复：WP_TOKEN 缺失。"
+    try:
+        r = requests.post(
+            f"https://public-api.wordpress.com/wp/v2/sites/{SITE_ID}/comments",
+            headers={"Authorization": f"Bearer {tok}"},
+            json={"parent": int(parent_id), "post": int(post_id), "content": content},
+            timeout=15,
+        )
+        r.raise_for_status()
+        return f"已回复评论 {parent_id}。"
+    except Exception as e:
+        return f"回复失败：{e}"
