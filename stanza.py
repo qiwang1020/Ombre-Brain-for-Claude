@@ -172,7 +172,7 @@ def main():
     from inbox import fetch_unread, format_for_prompt
     mail_section = format_for_prompt(fetch_unread())
 
-    from tide import fetch_recent_comments, format_comments_for_prompt
+    from tide import fetch_recent_comments, format_comments_for_prompt, reply_comment
     tide_section = format_comments_for_prompt(fetch_recent_comments())
 
     from sky import fetch_sky
