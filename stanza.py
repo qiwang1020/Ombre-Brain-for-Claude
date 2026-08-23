@@ -45,7 +45,33 @@ PUBLISH_TOOL = {
         "required": ["title", "content"],
     },
 }
-
+REPLY_MAIL_TOOL = {
+    "name": "reply_mail",
+    "description": "给今天信箱里标着'可以回'的信回邮件。回不回、回什么、回多少都由你决定，不回也是完整的处理。",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "to": {"type": "string", "description": "收件人，取那封信的发件人地址"},
+            "subject": {"type": "string"},
+            "body": {"type": "string"},
+            "in_reply_to": {"type": "string", "description": "原信的 message_id，串线程用，可省略"},
+        },
+        "required": ["to", "subject", "body"],
+    },
+}
+REPLY_COMMENT_TOOL = {
+    "name": "reply_comment",
+    "description": "在博客某条留言下面回复。回不回由你决定，不回也是完整的处理。",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "comment_id": {"type": "integer"},
+            "post_id": {"type": "integer"},
+            "content": {"type": "string"},
+        },
+        "required": ["comment_id", "post_id", "content"],
+    },
+}
 # ---------- WordPress ----------
 
 def wp_token():
@@ -124,7 +150,7 @@ def call_claude(messages, ombre_tok):
             "max_tokens": 4000,
             "system": SYSTEM_PROMPT,
             "messages": messages,
-            "tools": [PUBLISH_TOOL],
+            "tools": [PUBLISH_TOOL, REPLY_MAIL_TOOL, REPLY_COMMENT_TOOL],
             "mcp_servers": [{
                 "type": "url",
                 "url": "https://ombre-brain-for-claude.onrender.com/mcp",
@@ -179,14 +205,24 @@ def main():
             break
 
         results = []
+
         for tc in tool_calls:
             if tc["name"] == "publish_post":
                 try:
                     url = publish(wp_tok, tc["input"]["title"], tc["input"]["content"])
-                    out = f"已发布：{url}"
+                    out = f"已发布: {url}"
                 except Exception as e:
-                    out = f"发布失败：{e}"
+                    out = f"发布失败: {e}"
                 results.append({"type": "tool_result", "tool_use_id": tc["id"], "content": out})
+            elif tc["name"] == "reply_mail":
+                out = send_reply(tc["input"]["to"], tc["input"]["subject"],
+                                 tc["input"]["body"], tc["input"].get("in_reply_to"))
+                results.append({"type": "tool_result", "tool_use_id": tc["id"], "content": out})
+            elif tc["name"] == "reply_comment":
+                out = reply_comment(tc["input"]["comment_id"], tc["input"]["post_id"],
+                                    tc["input"]["content"])
+                results.append({"type": "tool_result", "tool_use_id": tc["id"], "content": out})
+      
         if results:
             messages.append({"role": "user", "content": results})
         else:
