@@ -137,11 +137,17 @@ def main():
 
     from inbox import fetch_unread, format_for_prompt
     mail_section = format_for_prompt(fetch_unread())
+
+    from tide import fetch_recent_comments, format_comments_for_prompt
+    tide_section = format_comments_for_prompt(fetch_recent_comments())
   
     opening = "格开了。"
     if mail_section:
         opening += "\n\n" + mail_section
-    
+
+    if tide_section:
+        opening += "\n\n" + tide_section
+  
     messages = [{"role": "user", "content": opening}]
     
     for _ in range(8):
