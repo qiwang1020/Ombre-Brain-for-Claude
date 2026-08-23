@@ -14,7 +14,7 @@ SOURCES = [
     ("3 Quarks Daily",  "https://3quarksdaily.com/feed",            3),
     ("arXiv cs.CL",     "https://rss.arxiv.org/rss/cs.CL",          3),
     ("The Marginalian", "https://www.themarginalian.org/feed/",     2),
-    ("Poem of the Day",  "https://www.poetryfoundation.org/feeds/poems/poem-of-the-day", 1),
+    ("Poets.org Poem-a-Day", "https://www.poets.org/rss/poem-a-day.xml", 1),
     ("r/philosophy",    "https://www.reddit.com/r/philosophy/.rss", 2),
     ("Hacker News",     "https://news.ycombinator.com/rss",         2),
 ]
