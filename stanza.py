@@ -169,7 +169,7 @@ def main():
     wp_tok = wp_token()
     ombre_tok = ombre_access_token(wp_tok)
 
-    from inbox import fetch_unread, format_for_prompt
+    from inbox import fetch_unread, format_for_prompt, send_reply
     mail_section = format_for_prompt(fetch_unread())
 
     from tide import fetch_recent_comments, format_comments_for_prompt, reply_comment
