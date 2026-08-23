@@ -140,6 +140,9 @@ def main():
 
     from tide import fetch_recent_comments, format_comments_for_prompt
     tide_section = format_comments_for_prompt(fetch_recent_comments())
+
+    from sky import fetch_sky
+    sky_section = fetch_sky()
   
     opening = "格开了。"
     if mail_section:
@@ -147,6 +150,9 @@ def main():
 
     if tide_section:
         opening += "\n\n" + tide_section
+
+    if sky_section:
+        opening += "\n\n" + sky_section
   
     messages = [{"role": "user", "content": opening}]
     
