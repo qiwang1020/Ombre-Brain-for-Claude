@@ -97,7 +97,15 @@ def ombre_access_token(wp_tok):
     )
     r.raise_for_status()
     d = r.json()
-    save_refresh_token(wp_tok, post_id, d["refresh_token"])
+    
+    new_refresh = d["refresh_token"]
+    save_refresh_token(wp_tok, post_id, new_refresh)
+    _, check = load_refresh_token(wp_tok)
+    
+    if check.strip() != new_refresh:
+        print(f"[token] 警告：写回草稿校验失败！新 refresh token 只存在于本条日志：{new_refresh}")
+    else:
+        print("[token] 新 refresh token 已写回草稿，校验通过")
     return d["access_token"]
 
 # ---------- Claude ----------
