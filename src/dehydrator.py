@@ -573,6 +573,8 @@ class Dehydrator:
         }
         async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
             r = await client.post(url, headers=headers, json=payload)
+            if resp.status_code >= 400:
+               logger.warning(f"API error body: {resp.text}")
             r.raise_for_status()
         data = r.json()
         content = data.get("content", [])
