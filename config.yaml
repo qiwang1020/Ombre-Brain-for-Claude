@@ -114,8 +114,8 @@ merge_threshold: 75
 dehydration:
   # Supports any OpenAI-compatible API: DeepSeek / Ollama / LM Studio / vLLM / Gemini etc.
   # 支持所有 OpenAI 兼容 API：DeepSeek / Ollama / LM Studio / vLLM / Gemini 等
-  model: "deepseek-chat"
-  base_url: "https://api.deepseek.com/v1"
+  model: "models/gemini-flash-lite-latest"
+  base_url: "https://generativelanguage.googleapis.com/v1beta/openai/"
   # Common base_url examples / 常见 base_url 示例：
   #   DeepSeek:    https://api.deepseek.com/v1
   #   SiliconFlow: https://api.siliconflow.cn/v1
