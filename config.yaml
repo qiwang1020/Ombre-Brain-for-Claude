@@ -27,7 +27,7 @@ deployment:
 # 环境变量则依赖 compose 逐个透传，漏一个就会静默退回默认名。
 # Display name for the AI side (letter signatures, prompts, user-facing text).
 # Empty = unset: falls back to the AI_NAME env var, then to "AI".
-ai_name: ""
+ai_name: "Paguro"
 
 # --- Timezone / 时区 ---
 # 用户只给日期、不写时区时（例如 Letter 定时锁的 unlock_date="2027-01-01"），
@@ -36,7 +36,7 @@ ai_name: ""
 # 缺少 tzdata 时回退固定 +08:00，不会因此报错。Dashboard「设置」里可改。
 # IANA timezone name used to interpret date-only input (e.g. Letter unlock_date).
 # Empty = Asia/Shanghai. Falls back to a fixed +08:00 when unresolvable.
-timezone: "Asia/Shanghai"
+timezone: "Europe/Rome"
 
 # --- Log level / 日志级别 ---
 log_level: "INFO"
@@ -186,7 +186,7 @@ matching:
 # AI 调用 breath() 不显式传 max_* 时使用这些默认；前端「浮现默认参数」面板会回写到这里。
 surfacing:
   breath_max_results: 20          # 1-50, hard cap of buckets returned per breath
-  breath_max_tokens: 20000        # 500-40000, total token cap per breath; must fit up to limits.max_pinned core rules first, then ordinary surfacing; 40000 is a safety ceiling, not the default
+  breath_max_tokens: 25000        # 500-40000, total token cap per breath; must fit up to limits.max_pinned core rules first, then ordinary surfacing; 40000 is a safety ceiling, not the default
   feel_max_tokens: 15000          # 500-20000, full-text budget for feel history; older feels collapse to one-line summaries
   # 3.6.0: 浮现区给近 7 天创建的桶预留几个位置，按 created 倒序；其余位置照旧按权重。
   # 权重是累积的——旧桶靠历史访问把分数攒得很高，新桶从 0 起步，永远排不进前列。
@@ -199,10 +199,10 @@ surfacing:
   # 加权采样：从 top_k 候选里按 score**(1/temperature) 抽 sample_k 个，让"想起"带轻微随机性。
   # 测试 fixture 里默认关 (enabled=false)，保证排序确定。生产可以开。
   sampling:
-    enabled: false                # true = 启用加权采样；false = 退化为 top1+shuffle 原行为
+    enabled: true                # true = 启用加权采样；false = 退化为 top1+shuffle 原行为
     top_k: 5                      # 候选池大小
     sample_k: 2                   # 抽出几个
-    temperature: 0.7              # >1 更平均、<1 更偏向高分；0.7 是个温和的默认
+    temperature: 0.9              # >1 更平均、<1 更偏向高分；0.7 是个温和的默认
 
 # --- Limits / 边界限制（iter 1.6 §5）---
 # 单桶字节上限 + pinned/protected 独立配额。显式设为 protected
@@ -237,8 +237,8 @@ them:
 # 补不全的后果是保守的：没登记的用户别名会被当第三方拆出来，
 # 拆出来的块里写明了归属，不会反过来变成「用户说过」。
 attribution:
-  self_names: []                  # 我这一侧的自称，如 ["小夜", "ombre"]
-  user_names: []                  # 用户的称呼，如 ["她", "poluz"]
+  self_names: ["Paguro", "Pagu", "蟹", "臭螃蟹"]
+  user_names: ["Qi", "她"]
 
 # --- iter 1.9 G: 桶类型默认值 / per-type frontmatter defaults ---
 # Applied at create() time only when caller doesn't pass that field.
