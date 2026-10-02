@@ -349,7 +349,7 @@ class Dehydrator:
         # 空、报 "LLM extraction failed" 的根因）。脱水/抽取是机械式转换，不需要
         # 思考，关掉它既修了空输出、又更快更省。设为 None 可彻底不发该字段（兼容
         # 不支持 thinkingConfig 的老模型）。
-        self.thinking_budget = dehy_cfg.get("thinking_budget", 0)
+        self.thinking_budget = dehy_cfg.get("thinking_budget", None)
         # OpenAI-compatible providers may expose request extensions that are not
         # part of the OpenAI schema (for example DeepSeek's thinking switch).
         extra_body = dehy_cfg.get("extra_body")
