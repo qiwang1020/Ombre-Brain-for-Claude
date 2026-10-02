@@ -637,6 +637,8 @@ class Dehydrator:
                 headers={"x-goog-api-key": self.api_key},
                 json=payload,
             )
+            if r.status_code >= 400:
+                logger.warning("Gemini %s: %s", r.status_code, r.text[:500])
             r.raise_for_status()
         data = r.json()
         candidates = data.get("candidates", [])
