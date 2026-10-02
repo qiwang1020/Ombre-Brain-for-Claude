@@ -66,7 +66,7 @@ logger = logging.getLogger("ombre_brain.dehydrator")
 _PROMPT_VERSION = 4
 
 # --- LLM 默认参数 ---
-_DEFAULT_MODEL = "gemini-3.5-flash-lite"
+_DEFAULT_MODEL = "gemini-2.5-flash-lite"
 _DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 _DEFAULT_MAX_TOKENS = 1024
 _DEFAULT_TEMPERATURE = 0.1
