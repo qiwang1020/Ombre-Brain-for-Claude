@@ -49,9 +49,10 @@ _IGNORED_BUCKET_TYPES = frozenset({"archived", "feel", "plan", "letter", "self",
 _MAX_HINT_RESULTS = 6
 _MAX_HINT_TOKENS = 160
 
-# 闸一：立一条 you 要模型在几个**不同自然日**重申。改一条同理——证据或正文一变，
-# 先前的重申就不算数，得重新攒。
+# 闸一：立一条 you 要模型在几个**不同自然日**重申。候选期改措辞、换依据不清零；
+# 只有已生效的正式条目改了正文才退回候选重新攒。
 REQUIRED_CONFIRMATIONS = 3
+
 # 闸二：一条 you 至少要几个记忆桶撑着。「一条认识不能只有一个出处」。
 MIN_SUPPORTING_BUCKETS = 2
 
@@ -422,11 +423,8 @@ class YouService:
                     stance="supports",
                     basis=basis,
                     # 必须是**桶内容的指纹**，不能是时间戳：evidence_revision 由
-                    # 这些 edge 算出来，而重申收据绑 evidence_revision。用时间戳
-                    # 的话每次重申都会让证据"变新"，先前攒的天数全部作废，三天
-                    # 门槛永远也到不了。
-                    # 反过来，桶正文真的被改了，指纹跟着变、收据作废、重新攒三天
-                    # ——依据变了先前的确认就不算数，这个语义是对的。
+                    # 这些 edge 算出来，收据按它去重。用时间戳的话每次重申都算
+                    # "新证据"，同一天会记出两张收据，去重形同虚设。
                     bucket_revision="sha256:" + hashlib.sha256(body.encode("utf-8")).hexdigest(),
                 )
             )
