@@ -478,7 +478,10 @@ class YouService:
             # 证据集合，管不到正文——但「修改也要三次确认」是 poluz 定死的，
             # 改一句话就悄悄沿用旧收据等于绕开闸一。
             content_changed = str(observation["content"]) != same.content
-            receipts = () if content_changed else same.review_receipts
+            # 候选期改措辞、换依据，先前攒的日子留着。只有已经生效的正式条目
+            # 改了正文才退回候选重新攒三天——已生效的那句话不能悄悄换掉。
+            reset = content_changed and same.lifecycle == "formal"
+            receipts = () if reset else same.review_receipts    
             claim = replace(
                 same,
                 content=str(observation["content"]),
