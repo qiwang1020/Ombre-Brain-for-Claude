@@ -757,8 +757,8 @@ class ThemService:
                     source_id=source_id,
                     stance="supports",
                     basis=basis,
-                    # 必须是桶内容的指纹，不能是时间戳。用时间戳的话每次重申都让
-                    # 证据"变新"，先前攒的天数全部作废，三日门槛永远到不了。
+                    # 必须是桶内容的指纹，不能是时间戳：收据按它去重，用时间戳的话
+                    # 同一天会记出两张收据，去重形同虚设。
                     bucket_revision="sha256:" + hashlib.sha256(body.encode("utf-8")).hexdigest(),
                 )
             )
@@ -819,6 +819,7 @@ class ThemService:
             for edge in edges:
                 by_bucket[edge.bucket_id] = edge
             evidence = tuple(sorted(by_bucket.values(), key=lambda item: item.bucket_id))
+
             # 正文改了就把先前的重申作废，重新攒三天。evidence_revision 只覆盖
             # 证据集合，管不到正文——但「修改也要三次确认」不能因为只改了一句话
             # 就绕过去。
@@ -839,6 +840,7 @@ class ThemService:
                 valid_until=None,
                 needs_recompute=False,
             )
+           
             expected_revision = same.revision
 
         claim = self._record_confirmation(claim)
