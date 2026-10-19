@@ -383,8 +383,9 @@ class YouClaim:
     def review_date_count(self) -> int:
         """模型在几个不同自然日重申过这条（闸一，门槛 REQUIRED_CONFIRMATIONS）。
 
-        绑定 evidence_revision：证据集合一变，先前的重申就不算数了，得按新的
-        证据重新攒三天。改一条 you 因此天然也要三天，不用另写一套逻辑。
+        不绑 evidence_revision：攒的是「这个 concept 我几天都这么看」，候选期
+        换措辞、加依据都不清零。正式条目改正文要重新攒，那一步在 service 里
+        把 review_receipts 整个清空，这里自然数到零。
         """
 
         return len(
@@ -392,7 +393,6 @@ class YouClaim:
                 receipt.review_date
                 for receipt in self.review_receipts
                 if receipt.result in {"reaffirmed", "remains_plausible"}
-                and receipt.evidence_revision == self.evidence_revision
             }
         )
 
