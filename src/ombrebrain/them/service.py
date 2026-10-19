@@ -820,23 +820,25 @@ class ThemService:
                 by_bucket[edge.bucket_id] = edge
             evidence = tuple(sorted(by_bucket.values(), key=lambda item: item.bucket_id))
 
-            # 正文改了就把先前的重申作废，重新攒三天。evidence_revision 只覆盖
-            # 证据集合，管不到正文——但「修改也要三次确认」不能因为只改了一句话
-            # 就绕过去。
+            # 候选期改措辞、换依据，先前攒的日子留着——攒的是「这个 concept 我
+            # 几天都这么看」，不是「这句话我几天都愿意签」。只有已经生效的
+            # 正式条目改了正文，才清掉收据、退回候选重新攒三天：已生效的那句话
+            # 不能在没重新攒够的情况下被换掉。与 you/service.py 同一条规则。
             content_changed = observation["content"] != same.content
+            reset = content_changed and same.lifecycle == "formal"
             claim = replace(
                 same,
                 content=observation["content"],
                 aspect=observation["aspect"],
                 evidence=evidence,
                 evidence_revision=evidence_digest(evidence),
-                review_receipts=() if content_changed else same.review_receipts,
+                review_receipts=() if reset else same.review_receipts,
                 lifecycle="candidate"
-                if (same.lifecycle == "expired" or content_changed)
+                if (same.lifecycle == "expired" or reset)
                 else same.lifecycle,
                 review_state="conflicting" if formal_conflicts else same.review_state,
                 conflicts_with=tuple(sorted(set((*same.conflicts_with, *formal_conflicts)))),
-                valid_from=None if content_changed else same.valid_from,
+                valid_from=None if reset else same.valid_from,
                 valid_until=None,
                 needs_recompute=False,
             )
