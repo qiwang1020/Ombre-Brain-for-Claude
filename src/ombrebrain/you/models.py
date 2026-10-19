@@ -486,10 +486,9 @@ class YouClaim:
         判重用的「今天」必须和收据时间戳同源：另取一次 now 的话，跨日那一瞬
         两个时间源会给出不同答案，同一天可能记下两条收据，三日门槛就少守一天。
 
-        收据绑当前的 evidence_revision：证据集合一变，先前的重申自动不算数
-        （见 review_date_count），所以「改一条也要重新攒三天」不需要另写逻辑。
-        正文变更的重置在 service.write() 里单独处理，因为 evidence_revision
-        不含正文。
+        收据仍记下当时的 evidence_revision，但只用来同一天去重：同一天换了依据
+        会多一张收据，review_date_count 按日期数，不会多算一天。候选期改措辞、
+        换依据都不清零；重申清零只在 service 里「正式条目改正文」那一处。
 
         放在 YouClaim 上而不是各自的 service 里：ThemClaim 是 YouClaim 的子类，
         ReviewReceipt 也是两边共用的，两份实现除了 policy_version 一字不差。
@@ -498,6 +497,7 @@ class YouClaim:
         `stamped` 由调用方给，不在这里取 utc_now()：时间源归 service 管
         （测试要能把它冻住），这条规则只管「同一自然日算不算重复」。
         """
+   
         today = stamped[:10]
         already = any(
             receipt.review_date == today
