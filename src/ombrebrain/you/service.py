@@ -469,19 +469,19 @@ class YouService:
                 conflicts_with=formal_conflicts,
             )
             expected_revision = 0
+            
         else:
             by_bucket = {item.bucket_id: item for item in same.evidence}
             for edge in edges:
                 by_bucket[edge.bucket_id] = edge
             evidence = tuple(sorted(by_bucket.values(), key=lambda item: item.bucket_id))
-            # 正文改了就把先前的重申作废，重新攒三天。evidence_revision 只覆盖
-            # 证据集合，管不到正文——但「修改也要三次确认」是 poluz 定死的，
-            # 改一句话就悄悄沿用旧收据等于绕开闸一。
+            # 候选期改措辞、换依据，先前攒的日子留着——攒的是「这个 concept 我
+            # 几天都这么看」，不是「这句话我几天都愿意签」。只有已经生效的
+            # 正式条目改了正文，才清掉收据、退回候选重新攒三天：已生效的那句话
+            # 不能在没重新攒够的情况下被换掉。
             content_changed = str(observation["content"]) != same.content
-            # 候选期改措辞、换依据，先前攒的日子留着。只有已经生效的正式条目
-            # 改了正文才退回候选重新攒三天——已生效的那句话不能悄悄换掉。
             reset = content_changed and same.lifecycle == "formal"
-            receipts = () if reset else same.review_receipts    
+            receipts = () if reset else same.review_receipts
             claim = replace(
                 same,
                 content=str(observation["content"]),
@@ -490,19 +490,17 @@ class YouService:
                 evidence=evidence,
                 evidence_revision=evidence_digest(evidence),
                 review_receipts=receipts,
-                # 正文一改就退回候选：已生效的那句话不能在没重新攒够三天的
-                # 情况下被换掉。
                 lifecycle="candidate"
-                if (same.lifecycle == "expired" or content_changed)
+                if (same.lifecycle == "expired" or reset)
                 else same.lifecycle,
                 review_state="conflicting" if formal_conflicts else same.review_state,
                 conflicts_with=tuple(sorted(set((*same.conflicts_with, *formal_conflicts)))),
-                valid_from=None if content_changed else same.valid_from,
+                valid_from=None if reset else same.valid_from,
                 valid_until=None,
                 needs_recompute=False,
             )
             expected_revision = same.revision
-
+        
         # 这里原本有一条 direct_formal 捷径：核心 aspect 或"明确且长期"的
         # stable_fact 可以跳过全部确认直接转正。已删除——poluz 定的是「未经三次
         # 确认的不真正落库」，没有例外。任何"这条一看就成立"的判断，都是在替
